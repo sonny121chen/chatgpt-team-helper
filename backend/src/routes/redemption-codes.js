@@ -1300,6 +1300,7 @@ router.post('/recover', async (req, res) => {
             AND COALESCE(ga.is_banned, 0) = 0
             AND (rc.reserved_for_entry_id IS NULL OR rc.reserved_for_entry_id = 0)
             AND (rc.reserved_for_order_no IS NULL OR rc.reserved_for_order_no = '')
+            AND COALESCE(NULLIF(lower(trim(rc.channel)), ''), 'common') = 'common'
             AND (
               (
                 COALESCE(ga.is_open, 0) = 0
@@ -1329,12 +1330,12 @@ router.post('/recover', async (req, res) => {
           originalAccountEmail,
           recoveryMode: 'open-account',
           status: 'failed',
-          errorMessage: '暂无可用补号账号兑换码'
+          errorMessage: '暂无可用通用渠道补录兑换码'
         })
         saveDatabase()
         return res.status(503).json({
-          error: '暂无可用补号账号，请稍后再试或联系客服',
-          message: '暂无可用补号账号，请稍后再试或联系客服',
+          error: '暂无可用通用渠道补录账号，请稍后再试或联系客服',
+          message: '暂无可用通用渠道补录账号，请稍后再试或联系客服',
           processedOriginalCodeId: originalCodeId,
           processedOriginalRedeemedAt: redeemedAt,
           processedReason,

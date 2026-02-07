@@ -2502,19 +2502,20 @@ router.post('/account-recovery/recover', async (req, res) => {
 	      const recoveryCodeResult = db.exec(
 	        `
 	          SELECT rc.id, rc.code, rc.channel, rc.account_email
-	          FROM redemption_codes rc
-	          JOIN gpt_accounts ga ON lower(ga.email) = lower(rc.account_email)
-	          WHERE rc.is_redeemed = 0
-	            AND rc.account_email IS NOT NULL
-	            AND COALESCE(ga.user_count, 0) + COALESCE(ga.invite_count, 0) < 6
-	            AND COALESCE(ga.is_banned, 0) = 0
-	            AND (rc.reserved_for_entry_id IS NULL OR rc.reserved_for_entry_id = 0)
-	            AND (rc.reserved_for_order_no IS NULL OR rc.reserved_for_order_no = '')
-	            AND (
-	                (
-	                  COALESCE(ga.is_open, 0) = 0
-	                  AND DATE(ga.created_at) >= DATE('now', 'localtime', '-7 day')
-	                )
+		          FROM redemption_codes rc
+		          JOIN gpt_accounts ga ON lower(ga.email) = lower(rc.account_email)
+		          WHERE rc.is_redeemed = 0
+		            AND rc.account_email IS NOT NULL
+		            AND COALESCE(ga.user_count, 0) + COALESCE(ga.invite_count, 0) < 6
+		            AND COALESCE(ga.is_banned, 0) = 0
+		            AND (rc.reserved_for_entry_id IS NULL OR rc.reserved_for_entry_id = 0)
+		            AND (rc.reserved_for_order_no IS NULL OR rc.reserved_for_order_no = '')
+		            AND COALESCE(NULLIF(lower(trim(rc.channel)), ''), 'common') = 'common'
+		            AND (
+		                (
+		                  COALESCE(ga.is_open, 0) = 0
+		                  AND DATE(ga.created_at) >= DATE('now', 'localtime', '-7 day')
+		                )
 	                OR (
 	                  ga.is_open = 1
 	                  AND DATE(ga.created_at) = DATE('now', 'localtime')
@@ -2540,10 +2541,10 @@ router.post('/account-recovery/recover', async (req, res) => {
             originalAccountEmail,
             recoveryMode: 'open-account',
             status: 'failed',
-            errorMessage: '暂无可用补号账号兑换码'
+            errorMessage: '暂无可用通用渠道补录兑换码'
           })
           saveDatabase()
-          return { originalCodeId, outcome: 'failed', message: '暂无可用补号账号兑换码' }
+          return { originalCodeId, outcome: 'failed', message: '暂无可用通用渠道补录兑换码' }
         }
 
         const recoveryCodeId = Number(recoveryRow[0])
