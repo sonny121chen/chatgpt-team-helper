@@ -101,7 +101,9 @@ const mapCodeRow = row => {
     reservedAt: row.length > 13 ? row[13] || null : null,
     reservedForOrderNo: row.length > 14 ? row[14] || null : null,
     reservedForOrderEmail: row.length > 15 ? row[15] || null : null,
-    orderType: row.length > 16 ? row[16] || null : null
+    orderType: row.length > 16 ? row[16] || null : null,
+    // Optional: may be present when list API joins gpt_accounts.
+    accountIsBanned: row.length > 17 ? toInt(row[17], 0) === 1 : undefined
   }
 }
 
@@ -546,12 +548,18 @@ router.get('/', authenticateToken, requireMenu('redemption_codes'), async (req, 
 
     if (!paginated) {
       const result = db.exec(`
-        SELECT id, code, is_redeemed, redeemed_at, redeemed_by,
-               account_email, channel, channel_name, created_at, updated_at,
-               reserved_for_uid, reserved_for_username, reserved_for_entry_id, reserved_at,
-               reserved_for_order_no, reserved_for_order_email, order_type
-        FROM redemption_codes
-        ORDER BY created_at DESC
+        SELECT rc.id, rc.code, rc.is_redeemed, rc.redeemed_at, rc.redeemed_by,
+               rc.account_email, rc.channel, rc.channel_name, rc.created_at, rc.updated_at,
+               rc.reserved_for_uid, rc.reserved_for_username, rc.reserved_for_entry_id, rc.reserved_at,
+               rc.reserved_for_order_no, rc.reserved_for_order_email, rc.order_type,
+               CASE
+                 WHEN ga.id IS NULL THEN 0
+                 ELSE COALESCE(ga.is_banned, 0)
+               END AS account_is_banned
+        FROM redemption_codes rc
+        LEFT JOIN gpt_accounts ga
+          ON LOWER(TRIM(ga.email)) = LOWER(TRIM(rc.account_email))
+        ORDER BY rc.created_at DESC
       `)
 
       if (result.length === 0 || result[0].values.length === 0) {
@@ -571,9 +579,9 @@ router.get('/', authenticateToken, requireMenu('redemption_codes'), async (req, 
     const params = []
 
     if (status === 'redeemed') {
-      conditions.push('is_redeemed = 1')
+      conditions.push('rc.is_redeemed = 1')
     } else if (status === 'unused' || status === 'unredeemed') {
-      conditions.push('is_redeemed = 0')
+      conditions.push('rc.is_redeemed = 0')
     }
 
     if (search) {
@@ -581,12 +589,12 @@ router.get('/', authenticateToken, requireMenu('redemption_codes'), async (req, 
       conditions.push(
         `
           (
-            LOWER(code) LIKE ?
-            OR LOWER(COALESCE(account_email, '')) LIKE ?
-            OR LOWER(COALESCE(redeemed_by, '')) LIKE ?
-            OR LOWER(COALESCE(reserved_for_username, '')) LIKE ?
-            OR LOWER(COALESCE(channel, '')) LIKE ?
-            OR LOWER(COALESCE(channel_name, '')) LIKE ?
+            LOWER(rc.code) LIKE ?
+            OR LOWER(COALESCE(rc.account_email, '')) LIKE ?
+            OR LOWER(COALESCE(rc.redeemed_by, '')) LIKE ?
+            OR LOWER(COALESCE(rc.reserved_for_username, '')) LIKE ?
+            OR LOWER(COALESCE(rc.channel, '')) LIKE ?
+            OR LOWER(COALESCE(rc.channel_name, '')) LIKE ?
           )
         `.trim()
       )
@@ -598,7 +606,7 @@ router.get('/', authenticateToken, requireMenu('redemption_codes'), async (req, 
     const countResult = db.exec(
       `
         SELECT COUNT(*)
-        FROM redemption_codes
+        FROM redemption_codes rc
         ${whereClause}
       `,
       params
@@ -610,13 +618,19 @@ router.get('/', authenticateToken, requireMenu('redemption_codes'), async (req, 
 
     const dataResult = db.exec(
       `
-        SELECT id, code, is_redeemed, redeemed_at, redeemed_by,
-               account_email, channel, channel_name, created_at, updated_at,
-               reserved_for_uid, reserved_for_username, reserved_for_entry_id, reserved_at,
-               reserved_for_order_no, reserved_for_order_email, order_type
-        FROM redemption_codes
+        SELECT rc.id, rc.code, rc.is_redeemed, rc.redeemed_at, rc.redeemed_by,
+               rc.account_email, rc.channel, rc.channel_name, rc.created_at, rc.updated_at,
+               rc.reserved_for_uid, rc.reserved_for_username, rc.reserved_for_entry_id, rc.reserved_at,
+               rc.reserved_for_order_no, rc.reserved_for_order_email, rc.order_type,
+               CASE
+                 WHEN ga.id IS NULL THEN 0
+                 ELSE COALESCE(ga.is_banned, 0)
+               END AS account_is_banned
+        FROM redemption_codes rc
+        LEFT JOIN gpt_accounts ga
+          ON LOWER(TRIM(ga.email)) = LOWER(TRIM(rc.account_email))
         ${whereClause}
-        ORDER BY created_at DESC
+        ORDER BY rc.created_at DESC
         LIMIT ? OFFSET ?
       `,
       [...params, pageSize, offset]

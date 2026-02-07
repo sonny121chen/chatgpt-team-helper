@@ -377,6 +377,8 @@ export interface RedemptionCode {
   redeemedAt?: string
   redeemedBy?: string
   accountEmail?: string
+  // Whether the bound GPT account is marked as banned (server may omit in older versions).
+  accountIsBanned?: boolean
   channel: RedemptionChannel
   channelName?: string
   orderType?: PurchaseOrderType | null

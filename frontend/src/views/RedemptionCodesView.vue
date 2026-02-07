@@ -103,6 +103,12 @@ const isAccountBanned = (accountEmail?: string | null) => {
   return Boolean(account?.isBanned)
 }
 
+const isCodeAccountBanned = (code?: RedemptionCode | null) => {
+  if (!code) return false
+  if (typeof code.accountIsBanned === 'boolean') return code.accountIsBanned
+  return isAccountBanned(code.accountEmail)
+}
+
 // 同步相关状态（参考账号管理的同步按钮交互）
 const syncingAccountId = ref<number | null>(null)
 const syncingAccountEmail = ref<string | null>(null)
@@ -1050,7 +1056,7 @@ const handleInviteSubmit = async () => {
                         :disabled="syncingAccountEmail === code.accountEmail"
                         @click="handleSyncAccountByEmail(code.accountEmail)"
                       >
-                        <span class="truncate" :class="isAccountBanned(code.accountEmail) ? 'text-red-600' : ''">{{ code.accountEmail }}</span>
+                        <span class="truncate" :class="isCodeAccountBanned(code) ? 'text-red-600' : ''">{{ code.accountEmail }}</span>
                         <RefreshCw class="w-3.5 h-3.5" :class="{ 'animate-spin': syncingAccountEmail === code.accountEmail }" />
                       </button>
                       <span
@@ -1190,7 +1196,7 @@ const handleInviteSubmit = async () => {
 	                        <div class="w-4 h-4 flex-shrink-0 rounded-full bg-white flex items-center justify-center text-[10px] text-gray-500 font-bold shadow-sm">
 	                          {{ code.accountEmail.charAt(0).toUpperCase() }}
 	                        </div>
-	                        <span class="text-xs truncate" :class="isAccountBanned(code.accountEmail) ? 'text-red-600' : 'text-gray-700'">{{ code.accountEmail }}</span>
+	                        <span class="text-xs truncate" :class="isCodeAccountBanned(code) ? 'text-red-600' : 'text-gray-700'">{{ code.accountEmail }}</span>
 	                        <span
 	                          v-if="accountDemotionMeta(code.accountEmail)"
 	                          class="inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium flex-shrink-0"
@@ -1562,7 +1568,7 @@ const handleInviteSubmit = async () => {
                  <span class="text-xs text-blue-600 font-semibold uppercase">Account</span>
                  <span
                    class="font-medium"
-                   :class="isAccountBanned(redeemTargetCode.accountEmail) ? 'text-red-600' : 'text-blue-900'"
+                   :class="isCodeAccountBanned(redeemTargetCode) ? 'text-red-600' : 'text-blue-900'"
                  >
                    {{ redeemTargetCode.accountEmail || '未指定' }}
                  </span>
