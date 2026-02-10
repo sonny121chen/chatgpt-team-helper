@@ -39,6 +39,7 @@ const error = ref('')
 const teleportReady = ref(false)
 const showBatchDialog = ref(false)
 const batchCount = ref(10)
+const batchExpiresDays = ref<number | null>(null)
 const selectedAccountEmail = ref('')
 const selectedBatchChannel = ref<RedemptionChannel>('common')
 const creating = ref(false)
@@ -201,7 +202,7 @@ const pageSize = ref(10)
 
 // 搜索和筛选状态
 const searchQuery = ref('')
-const statusFilter = ref<'全部' | '已使用' | '未使用'>('全部')
+const statusFilter = ref<'全部' | '已使用' | '未使用' | '已过期'>('全部')
 
 // 计算总页数
 const totalPages = computed(() => Math.max(1, Math.ceil(totalCodes.value / pageSize.value)))
@@ -315,7 +316,9 @@ const loadCodes = async () => {
       ? 'redeemed'
       : statusFilter.value === '未使用'
         ? 'unused'
-        : 'all'
+        : statusFilter.value === '已过期'
+          ? 'expired'
+          : 'all'
 
     const response = await redemptionCodeService.list({
       page: currentPage.value,
@@ -375,6 +378,7 @@ const truncateText = (text?: string | null, maxLength: number = 20) => {
 
 const openBatchDialog = () => {
   batchCount.value = 10
+  batchExpiresDays.value = null
   selectedAccountEmail.value = accounts.value.length > 0 ? (accounts.value[0]?.email || '') : ''
   selectedBatchChannel.value = 'common'
   showBatchDialog.value = true
@@ -383,8 +387,22 @@ const openBatchDialog = () => {
 const closeBatchDialog = () => {
   showBatchDialog.value = false
   batchCount.value = 10
+  batchExpiresDays.value = null
   selectedAccountEmail.value = ''
   selectedBatchChannel.value = 'common'
+}
+
+// 判断兑换码是否已过期
+const isCodeExpired = (code: RedemptionCode) => {
+  if (!code.expiresAt) return false
+  return new Date(code.expiresAt).getTime() < Date.now()
+}
+
+// 根据兑换码状态返回显示信息
+const getCodeStatus = (code: RedemptionCode) => {
+  if (code.isRedeemed) return { text: '已使用', class: 'bg-gray-50 text-gray-500 border-gray-200' }
+  if (isCodeExpired(code)) return { text: '已过期', class: 'bg-red-50 text-red-600 border-red-200' }
+  return { text: '未使用', class: 'bg-green-50 text-green-700 border-green-200' }
 }
 
 const handleBatchCreate = async () => {
@@ -402,7 +420,7 @@ const handleBatchCreate = async () => {
   error.value = ''
 
   try {
-    const result = await redemptionCodeService.batchCreate(batchCount.value, selectedAccountEmail.value, selectedBatchChannel.value)
+    const result = await redemptionCodeService.batchCreate(batchCount.value, selectedAccountEmail.value, selectedBatchChannel.value, batchExpiresDays.value || undefined)
     await loadCodes()
     closeBatchDialog()
 
@@ -907,6 +925,7 @@ const handleInviteSubmit = async () => {
             <SelectItem value="全部">全部状态</SelectItem>
             <SelectItem value="未使用">未使用</SelectItem>
             <SelectItem value="已使用">已使用</SelectItem>
+            <SelectItem value="已过期">已过期</SelectItem>
           </SelectContent>
         </Select>
       </div>
@@ -984,6 +1003,7 @@ const handleInviteSubmit = async () => {
                 <th class="px-6 py-5 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider">所属账号</th>
                 <th class="px-6 py-5 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider">兑换用户</th>
                 <th class="px-6 py-5 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider">创建时间</th>
+                <th class="px-6 py-5 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider">有效期</th>
                 <th class="px-6 py-5 text-right text-xs font-semibold text-gray-400 uppercase tracking-wider">操作</th>
               </tr>
             </thead>
@@ -1019,9 +1039,9 @@ const handleInviteSubmit = async () => {
                 </td>
                 <td class="px-6 py-5 text-center">
                   <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold border"
-                    :class="code.isRedeemed ? 'bg-gray-50 text-gray-500 border-gray-200' : 'bg-green-50 text-green-700 border-green-200'"
+                    :class="getCodeStatus(code).class"
                   >
-                    {{ code.isRedeemed ? '已使用' : '未使用' }}
+                    {{ getCodeStatus(code).text }}
                   </span>
                 </td>
                 <td class="px-6 py-5">
@@ -1095,6 +1115,14 @@ const handleInviteSubmit = async () => {
                    </div>
                 </td>
                 <td class="px-6 py-5 text-sm text-gray-500">{{ formatShanghaiDate(code.createdAt, dateFormatOptions).split(' ')[0] }}</td>
+                <td class="px-6 py-5 text-sm">
+                  <template v-if="code.expiresAt">
+                    <span :class="isCodeExpired(code) ? 'text-red-500 line-through' : 'text-gray-500'">
+                      {{ formatShanghaiDate(code.expiresAt, dateFormatOptions).split(' ')[0] }}
+                    </span>
+                  </template>
+                  <span v-else class="text-gray-300">永久</span>
+                </td>
 	                <td class="px-6 py-5 text-right">
 	                  <div class="flex items-center justify-end gap-1">
 	                    <!-- Reinvite -->
@@ -1157,9 +1185,9 @@ const handleInviteSubmit = async () => {
                    </span>
                 </div>
                 <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-semibold border"
-                   :class="code.isRedeemed ? 'bg-gray-50 text-gray-500 border-gray-200' : 'bg-green-50 text-green-700 border-green-200'"
+                   :class="getCodeStatus(code).class"
                 >
-                   {{ code.isRedeemed ? '已使用' : '未使用' }}
+                   {{ getCodeStatus(code).text }}
                 </span>
              </div>
 
@@ -1539,6 +1567,21 @@ const handleInviteSubmit = async () => {
                 max="1000"
                 class="h-11 bg-gray-50 border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-100 focus:border-blue-500"
               />
+           </div>
+
+           <div class="space-y-2">
+              <Label class="text-xs font-semibold text-gray-500 uppercase tracking-wider">有效期（天）</Label>
+              <Input
+                v-model.number="batchExpiresDays"
+                type="number"
+                min="1"
+                max="3650"
+                placeholder="留空表示永久有效"
+                class="h-11 bg-gray-50 border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-100 focus:border-blue-500"
+              />
+              <p class="text-xs text-gray-400">
+                设置后，兑换码将在指定天数后自动过期不可使用。留空则永久有效。
+              </p>
            </div>
         </div>
 

@@ -1640,6 +1640,12 @@ export async function initDatabase() {
               saveDatabase()
             }
 
+            if (!redemptionColumns.includes('expires_at')) {
+              database.run('ALTER TABLE redemption_codes ADD COLUMN expires_at DATETIME')
+              console.log('已添加 expires_at 列到 redemption_codes 表')
+              saveDatabase()
+            }
+
             database.run(
               `UPDATE redemption_codes SET channel = ? WHERE channel IS NULL OR channel = ''`,
               [DEFAULT_CHANNEL],
@@ -1726,6 +1732,7 @@ export async function initDatabase() {
       channel TEXT DEFAULT '${DEFAULT_CHANNEL}',
       channel_name TEXT DEFAULT '${DEFAULT_CHANNEL_NAME}',
       order_type TEXT DEFAULT 'warranty',
+      expires_at DATETIME,
       created_at DATETIME DEFAULT (DATETIME('now', 'localtime')),
       updated_at DATETIME DEFAULT (DATETIME('now', 'localtime')),
       reserved_for_uid TEXT,

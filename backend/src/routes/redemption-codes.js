@@ -103,8 +103,17 @@ const mapCodeRow = row => {
     reservedForOrderEmail: row.length > 15 ? row[15] || null : null,
     orderType: row.length > 16 ? row[16] || null : null,
     // Optional: may be present when list API joins gpt_accounts.
-    accountIsBanned: row.length > 17 ? toInt(row[17], 0) === 1 : undefined
+    accountIsBanned: row.length > 17 ? toInt(row[17], 0) === 1 : undefined,
+    expiresAt: row.length > 18 ? row[18] || null : null
   }
+}
+
+// 检查兑换码是否已过期
+const isCodeExpired = (expiresAt) => {
+  if (!expiresAt) return false
+  const expiresTime = new Date(expiresAt).getTime()
+  if (Number.isNaN(expiresTime)) return false
+  return Date.now() > expiresTime
 }
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
@@ -232,7 +241,8 @@ export async function redeemCodeInternal({
       SELECT id, code, is_redeemed, redeemed_at, redeemed_by,
              account_email, channel, channel_name, created_at, updated_at,
              reserved_for_uid, reserved_for_username, reserved_for_entry_id, reserved_at,
-             reserved_for_order_no, reserved_for_order_email, order_type
+             reserved_for_order_no, reserved_for_order_email, order_type,
+             expires_at
       FROM redemption_codes
       WHERE code = ?
     `, [sanitizedCode])
@@ -260,6 +270,12 @@ export async function redeemCodeInternal({
 
   if (isRedeemed) {
     throw new RedemptionError(400, '该兑换码已被使用')
+  }
+
+  // 检查兑换码是否已过期（参考 team-manage 项目的 validate_code 逻辑）
+  const codeExpiresAt = codeRow.length > 17 ? codeRow[17] : null
+  if (isCodeExpired(codeExpiresAt)) {
+    throw new RedemptionError(400, '该兑换码已过期')
   }
 
   const fallbackFromCommonChannelAllowed = Boolean(allowCommonChannelFallback)
@@ -555,7 +571,8 @@ router.get('/', authenticateToken, requireMenu('redemption_codes'), async (req, 
                CASE
                  WHEN ga.id IS NULL THEN 0
                  ELSE COALESCE(ga.is_banned, 0)
-               END AS account_is_banned
+               END AS account_is_banned,
+               rc.expires_at
         FROM redemption_codes rc
         LEFT JOIN gpt_accounts ga
           ON LOWER(TRIM(ga.email)) = LOWER(TRIM(rc.account_email))
@@ -582,6 +599,10 @@ router.get('/', authenticateToken, requireMenu('redemption_codes'), async (req, 
       conditions.push('rc.is_redeemed = 1')
     } else if (status === 'unused' || status === 'unredeemed') {
       conditions.push('rc.is_redeemed = 0')
+      conditions.push("(rc.expires_at IS NULL OR rc.expires_at > DATETIME('now', 'localtime'))")
+    } else if (status === 'expired') {
+      conditions.push('rc.is_redeemed = 0')
+      conditions.push("rc.expires_at IS NOT NULL AND rc.expires_at <= DATETIME('now', 'localtime')")
     }
 
     if (search) {
@@ -625,7 +646,8 @@ router.get('/', authenticateToken, requireMenu('redemption_codes'), async (req, 
                CASE
                  WHEN ga.id IS NULL THEN 0
                  ELSE COALESCE(ga.is_banned, 0)
-               END AS account_is_banned
+               END AS account_is_banned,
+               rc.expires_at
         FROM redemption_codes rc
         LEFT JOIN gpt_accounts ga
           ON LOWER(TRIM(ga.email)) = LOWER(TRIM(rc.account_email))
@@ -737,7 +759,7 @@ router.post('/:id/reinvite', authenticateToken, requireMenu('redemption_codes'),
 // 批量创建兑换码
 router.post('/batch', authenticateToken, requireMenu('redemption_codes'), async (req, res) => {
   try {
-    const { count, accountEmail, channel } = req.body
+    const { count, accountEmail, channel, expiresDays } = req.body
 
     if (!count || count < 1 || count > 1000) {
       return res.status(400).json({ error: '数量必须在 1-1000 之间' })
@@ -803,6 +825,19 @@ router.post('/batch', authenticateToken, requireMenu('redemption_codes'), async 
     const normalizedChannel = normalizeChannel(channel)
     const resolvedChannelName = getChannelName(normalizedChannel)
 
+    // 计算过期时间
+    let expiresAt = null
+    if (expiresDays != null) {
+      const days = toInt(expiresDays, 0)
+      if (days > 0) {
+        const expiresDate = new Date()
+        expiresDate.setDate(expiresDate.getDate() + days)
+        // 格式化为 SQLite 本地时间格式
+        const pad = (v) => String(v).padStart(2, '0')
+        expiresAt = `${expiresDate.getFullYear()}-${pad(expiresDate.getMonth() + 1)}-${pad(expiresDate.getDate())} ${pad(expiresDate.getHours())}:${pad(expiresDate.getMinutes())}:${pad(expiresDate.getSeconds())}`
+      }
+    }
+
     const createdCodes = []
     const failedCodes = []
 
@@ -815,8 +850,8 @@ router.post('/batch', authenticateToken, requireMenu('redemption_codes'), async 
       while (attempts < 4 && !success) {
         try {
           db.run(
-            `INSERT INTO redemption_codes (code, account_email, channel, channel_name, created_at, updated_at) VALUES (?, ?, ?, ?, DATETIME('now', 'localtime'), DATETIME('now', 'localtime'))`,
-            [code, accountEmail, normalizedChannel, resolvedChannelName]
+            `INSERT INTO redemption_codes (code, account_email, channel, channel_name, expires_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, DATETIME('now', 'localtime'), DATETIME('now', 'localtime'))`,
+            [code, accountEmail, normalizedChannel, resolvedChannelName, expiresAt]
           )
           createdCodes.push(code)
           success = true
@@ -1489,7 +1524,7 @@ router.post('/xhs/search-order', requireFeatureEnabled('xhs'), async (req, res) 
     })
   } catch (error) {
     console.error('[XHS Search Sync] 请求处理失败:', error)
-    await recordXhsSyncResult({ success: false, error: error?.message || '同步失败' }).catch(() => {})
+    await recordXhsSyncResult({ success: false, error: error?.message || '同步失败' }).catch(() => { })
     res.status(500).json({ error: error?.message || '服务器错误，请稍后再试' })
   }
 })
@@ -1534,25 +1569,25 @@ router.post('/xhs/redeem-order', requireFeatureEnabled('xhs'), async (req, res) 
     }
 
     await withLocks([`xhs-redeem`, `xhs-order:${normalizedOrderNumber}`], async () => {
-	      const orderRecord = await getXhsOrderByNumber(normalizedOrderNumber)
-	      if (!orderRecord) {
-	        return res.status(404).json({ error: '未找到对应订单，请稍后再试' })
-	      }
+      const orderRecord = await getXhsOrderByNumber(normalizedOrderNumber)
+      if (!orderRecord) {
+        return res.status(404).json({ error: '未找到对应订单，请稍后再试' })
+      }
 
-	      if (orderRecord.isUsed) {
-	        return res.status(400).json({ error: '该订单已完成兑换' })
-	      }
+      if (orderRecord.isUsed) {
+        return res.status(400).json({ error: '该订单已完成兑换' })
+      }
 
-	      if (String(orderRecord.orderStatus || '').trim() === '已关闭') {
-	        return res.status(403).json({ error: '该订单已完成售后退款（已关闭），无法进行核销' })
-	      }
+      if (String(orderRecord.orderStatus || '').trim() === '已关闭') {
+        return res.status(403).json({ error: '该订单已完成售后退款（已关闭），无法进行核销' })
+      }
 
-	      const db = await getDatabase()
-	      const now = new Date()
-	      const fallbackToYesterdayEnabled = !Boolean(strictToday) && now.getHours() >= 0 && now.getHours() < 8
+      const db = await getDatabase()
+      const now = new Date()
+      const fallbackToYesterdayEnabled = !Boolean(strictToday) && now.getHours() >= 0 && now.getHours() < 8
 
-		      const availableCodeResult = db.exec(
-		        `
+      const availableCodeResult = db.exec(
+        `
 		          SELECT rc.id, rc.code, rc.created_at
 		          FROM redemption_codes rc
 		          WHERE rc.channel = 'xhs'
@@ -1573,13 +1608,13 @@ router.post('/xhs/redeem-order', requireFeatureEnabled('xhs'), async (req, res) 
 	          ORDER BY rc.created_at ASC
 	          LIMIT 1
 	        `
-	      )
+      )
 
       let selectedCodeRow = availableCodeResult?.[0]?.values?.[0] || null
 
       if (!selectedCodeRow && fallbackToYesterdayEnabled) {
-		        const fallbackCodeResult = db.exec(
-		          `
+        const fallbackCodeResult = db.exec(
+          `
 		            SELECT rc.id, rc.code, rc.created_at
 		            FROM redemption_codes rc
 		            WHERE rc.channel = 'xhs'
@@ -1600,14 +1635,14 @@ router.post('/xhs/redeem-order', requireFeatureEnabled('xhs'), async (req, res) 
 	            ORDER BY rc.created_at ASC
 	            LIMIT 1
 	          `
-	        )
-	        selectedCodeRow = fallbackCodeResult?.[0]?.values?.[0] || null
-	      }
+        )
+        selectedCodeRow = fallbackCodeResult?.[0]?.values?.[0] || null
+      }
 
-        if (!selectedCodeRow) {
-          const commonFallback = await withLocks(['redemption-codes:pool:common'], async () => {
-            const commonCodeResult = db.exec(
-              `
+      if (!selectedCodeRow) {
+        const commonFallback = await withLocks(['redemption-codes:pool:common'], async () => {
+          const commonCodeResult = db.exec(
+            `
                 SELECT rc.id, rc.code, rc.created_at
                 FROM redemption_codes rc
                 WHERE rc.channel = 'common'
@@ -1628,12 +1663,12 @@ router.post('/xhs/redeem-order', requireFeatureEnabled('xhs'), async (req, res) 
                 ORDER BY rc.created_at ASC
                 LIMIT 1
               `
-            )
-            let commonCodeRow = commonCodeResult?.[0]?.values?.[0] || null
+          )
+          let commonCodeRow = commonCodeResult?.[0]?.values?.[0] || null
 
-            if (!commonCodeRow && fallbackToYesterdayEnabled) {
-              const commonYesterdayResult = db.exec(
-                `
+          if (!commonCodeRow && fallbackToYesterdayEnabled) {
+            const commonYesterdayResult = db.exec(
+              `
                   SELECT rc.id, rc.code, rc.created_at
                   FROM redemption_codes rc
                   WHERE rc.channel = 'common'
@@ -1654,47 +1689,47 @@ router.post('/xhs/redeem-order', requireFeatureEnabled('xhs'), async (req, res) 
                   ORDER BY rc.created_at ASC
                   LIMIT 1
                 `
-              )
-              commonCodeRow = commonYesterdayResult?.[0]?.values?.[0] || null
-            }
+            )
+            commonCodeRow = commonYesterdayResult?.[0]?.values?.[0] || null
+          }
 
-            if (!commonCodeRow) return null
+          if (!commonCodeRow) return null
 
-            const selectedCodeId = commonCodeRow[0]
-            const selectedCode = commonCodeRow[1]
+          const selectedCodeId = commonCodeRow[0]
+          const selectedCode = commonCodeRow[1]
 
-            const redemptionResult = await redeemCodeInternal({
-              code: selectedCode,
-              email: normalizedEmail,
-              channel: 'xhs',
-              skipCodeFormatValidation: true,
-              allowCommonChannelFallback: true
-            })
-
-            await markXhsOrderRedeemed(orderRecord.id, selectedCodeId, selectedCode, normalizedEmail)
-
-            return { selectedCodeId, selectedCode, redemptionResult }
+          const redemptionResult = await redeemCodeInternal({
+            code: selectedCode,
+            email: normalizedEmail,
+            channel: 'xhs',
+            skipCodeFormatValidation: true,
+            allowCommonChannelFallback: true
           })
 
-          if (commonFallback) {
-            return res.json({
-              message: '兑换成功',
-              data: commonFallback.redemptionResult.data,
-              order: {
-                ...orderRecord,
-                status: 'redeemed',
-                isUsed: true,
-                userEmail: normalizedEmail,
-                assignedCodeId: commonFallback.selectedCodeId,
-                assignedCode: commonFallback.selectedCode,
-              }
-            })
-          }
+          await markXhsOrderRedeemed(orderRecord.id, selectedCodeId, selectedCode, normalizedEmail)
+
+          return { selectedCodeId, selectedCode, redemptionResult }
+        })
+
+        if (commonFallback) {
+          return res.json({
+            message: '兑换成功',
+            data: commonFallback.redemptionResult.data,
+            order: {
+              ...orderRecord,
+              status: 'redeemed',
+              isUsed: true,
+              userEmail: normalizedEmail,
+              assignedCodeId: commonFallback.selectedCodeId,
+              assignedCode: commonFallback.selectedCode,
+            }
+          })
         }
+      }
 
       if (!selectedCodeRow) {
-	        const statsResult = db.exec(
-	          `
+        const statsResult = db.exec(
+          `
 	            SELECT
 	              COUNT(*) as all_total,
 	              SUM(CASE WHEN is_redeemed = 0 THEN 1 ELSE 0 END) as all_unused,
@@ -1712,18 +1747,18 @@ router.post('/xhs/redeem-order', requireFeatureEnabled('xhs'), async (req, res) 
 	                )
 	              )
 	          `
-	        )
+        )
         const statsRow = statsResult?.[0]?.values?.[0] || []
         const allTotal = Number(statsRow[0] || 0)
         const todayTotal = Number(statsRow[2] || 0)
         const todayUnused = Number(statsRow[3] || 0)
 
-	        const errorCode = allTotal === 0
-	          ? 'xhs_codes_not_configured'
-	          : (todayTotal <= 0 ? 'xhs_no_today_codes' : (todayUnused <= 0 ? 'xhs_today_codes_exhausted' : 'xhs_codes_unavailable'))
+        const errorCode = allTotal === 0
+          ? 'xhs_codes_not_configured'
+          : (todayTotal <= 0 ? 'xhs_no_today_codes' : (todayUnused <= 0 ? 'xhs_today_codes_exhausted' : 'xhs_codes_unavailable'))
 
-	        return res.status(503).json({ error: OUT_OF_STOCK_MESSAGE, errorCode })
-	      }
+        return res.status(503).json({ error: OUT_OF_STOCK_MESSAGE, errorCode })
+      }
 
       const selectedCodeId = selectedCodeRow[0]
       const selectedCode = selectedCodeRow[1]
@@ -1820,7 +1855,7 @@ router.post('/xianyu/search-order', requireFeatureEnabled('xianyu'), async (req,
     })
   } catch (error) {
     console.error('[Xianyu Search Sync] 请求处理失败:', error)
-    await recordXianyuSyncResult({ success: false, error: error?.message || '同步失败' }).catch(() => {})
+    await recordXianyuSyncResult({ success: false, error: error?.message || '同步失败' }).catch(() => { })
     res.status(500).json({ error: error?.message || '服务器错误，请稍后再试' })
   }
 })
@@ -1885,8 +1920,8 @@ router.post('/xianyu/redeem-order', requireFeatureEnabled('xianyu'), async (req,
       const expectedDemoted = isNoWarrantyOrderType(resolvedOrderType) ? 1 : 0
       const orderTypeLabel = isNoWarrantyOrderType(resolvedOrderType) ? '无质保' : '质保'
 
-	      const availableCodeResult = db.exec(
-	        `
+      const availableCodeResult = db.exec(
+        `
 	          SELECT rc.id, rc.code, rc.created_at
 	          FROM redemption_codes rc
 	          WHERE rc.channel = 'xianyu'
@@ -1912,8 +1947,8 @@ router.post('/xianyu/redeem-order', requireFeatureEnabled('xianyu'), async (req,
       let selectedCodeRow = availableCodeResult?.[0]?.values?.[0] || null
 
       if (!selectedCodeRow && fallbackToYesterdayEnabled) {
-	        const fallbackCodeResult = db.exec(
-	          `
+        const fallbackCodeResult = db.exec(
+          `
 	            SELECT rc.id, rc.code, rc.created_at
 	            FROM redemption_codes rc
 	            WHERE rc.channel = 'xianyu'
@@ -1935,13 +1970,13 @@ router.post('/xianyu/redeem-order', requireFeatureEnabled('xianyu'), async (req,
             LIMIT 1
           `
         )
-	        selectedCodeRow = fallbackCodeResult?.[0]?.values?.[0] || null
-	      }
+        selectedCodeRow = fallbackCodeResult?.[0]?.values?.[0] || null
+      }
 
-        if (!selectedCodeRow) {
-          const commonFallback = await withLocks(['redemption-codes:pool:common'], async () => {
-            const commonCodeResult = db.exec(
-              `
+      if (!selectedCodeRow) {
+        const commonFallback = await withLocks(['redemption-codes:pool:common'], async () => {
+          const commonCodeResult = db.exec(
+            `
                 SELECT rc.id, rc.code, rc.created_at
                 FROM redemption_codes rc
                 WHERE rc.channel = 'common'
@@ -1962,12 +1997,12 @@ router.post('/xianyu/redeem-order', requireFeatureEnabled('xianyu'), async (req,
                 ORDER BY rc.created_at ASC
                 LIMIT 1
               `
-            )
-            let commonCodeRow = commonCodeResult?.[0]?.values?.[0] || null
+          )
+          let commonCodeRow = commonCodeResult?.[0]?.values?.[0] || null
 
-            if (!commonCodeRow && fallbackToYesterdayEnabled) {
-              const commonYesterdayResult = db.exec(
-                `
+          if (!commonCodeRow && fallbackToYesterdayEnabled) {
+            const commonYesterdayResult = db.exec(
+              `
                   SELECT rc.id, rc.code, rc.created_at
                   FROM redemption_codes rc
                   WHERE rc.channel = 'common'
@@ -1988,48 +2023,48 @@ router.post('/xianyu/redeem-order', requireFeatureEnabled('xianyu'), async (req,
                   ORDER BY rc.created_at ASC
                   LIMIT 1
                 `
-              )
-              commonCodeRow = commonYesterdayResult?.[0]?.values?.[0] || null
-            }
+            )
+            commonCodeRow = commonYesterdayResult?.[0]?.values?.[0] || null
+          }
 
-            if (!commonCodeRow) return null
+          if (!commonCodeRow) return null
 
-            const selectedCodeId = commonCodeRow[0]
-            const selectedCode = commonCodeRow[1]
+          const selectedCodeId = commonCodeRow[0]
+          const selectedCode = commonCodeRow[1]
 
-            const redemptionResult = await redeemCodeInternal({
-              code: selectedCode,
-              email: normalizedEmail,
-              channel: 'xianyu',
-              orderType: resolvedOrderType,
-              skipCodeFormatValidation: true,
-              allowCommonChannelFallback: true
-            })
-
-            await markXianyuOrderRedeemed(orderRecord.id, selectedCodeId, selectedCode, normalizedEmail)
-
-            return { selectedCodeId, selectedCode, redemptionResult }
+          const redemptionResult = await redeemCodeInternal({
+            code: selectedCode,
+            email: normalizedEmail,
+            channel: 'xianyu',
+            orderType: resolvedOrderType,
+            skipCodeFormatValidation: true,
+            allowCommonChannelFallback: true
           })
 
-          if (commonFallback) {
-            return res.json({
-              message: '兑换成功',
-              data: commonFallback.redemptionResult.data,
-              order: {
-                ...orderRecord,
-                status: 'redeemed',
-                isUsed: true,
-                userEmail: normalizedEmail,
-                assignedCodeId: commonFallback.selectedCodeId,
-                assignedCode: commonFallback.selectedCode,
-              }
-            })
-          }
-        }
+          await markXianyuOrderRedeemed(orderRecord.id, selectedCodeId, selectedCode, normalizedEmail)
 
-	      if (!selectedCodeRow) {
-	        const statsResult = db.exec(
-	          `
+          return { selectedCodeId, selectedCode, redemptionResult }
+        })
+
+        if (commonFallback) {
+          return res.json({
+            message: '兑换成功',
+            data: commonFallback.redemptionResult.data,
+            order: {
+              ...orderRecord,
+              status: 'redeemed',
+              isUsed: true,
+              userEmail: normalizedEmail,
+              assignedCodeId: commonFallback.selectedCodeId,
+              assignedCode: commonFallback.selectedCode,
+            }
+          })
+        }
+      }
+
+      if (!selectedCodeRow) {
+        const statsResult = db.exec(
+          `
 	            SELECT
               COUNT(*) as all_total,
               SUM(CASE WHEN is_redeemed = 0 THEN 1 ELSE 0 END) as all_unused,
@@ -2053,24 +2088,24 @@ router.post('/xianyu/redeem-order', requireFeatureEnabled('xianyu'), async (req,
         const todayTotal = Number(statsRow[2] || 0)
         const todayUnused = Number(statsRow[3] || 0)
 
-	        const errorCode = allTotal === 0
-	          ? 'xianyu_codes_not_configured'
-	          : (todayTotal <= 0 ? 'xianyu_no_today_codes' : (todayUnused <= 0 ? 'xianyu_today_codes_exhausted' : 'xianyu_codes_unavailable'))
+        const errorCode = allTotal === 0
+          ? 'xianyu_codes_not_configured'
+          : (todayTotal <= 0 ? 'xianyu_no_today_codes' : (todayUnused <= 0 ? 'xianyu_today_codes_exhausted' : 'xianyu_codes_unavailable'))
 
-	        return res.status(503).json({ error: OUT_OF_STOCK_MESSAGE, errorCode })
-	      }
+        return res.status(503).json({ error: OUT_OF_STOCK_MESSAGE, errorCode })
+      }
 
       const selectedCodeId = selectedCodeRow[0]
       const selectedCode = selectedCodeRow[1]
 
-	      const redemptionResult = await redeemCodeInternal({
-	        code: selectedCode,
-	        email: normalizedEmail,
-	        channel: 'xianyu',
-	        orderType: resolvedOrderType,
-	        skipCodeFormatValidation: true,
-          allowCommonChannelFallback: true
-	      })
+      const redemptionResult = await redeemCodeInternal({
+        code: selectedCode,
+        email: normalizedEmail,
+        channel: 'xianyu',
+        orderType: resolvedOrderType,
+        skipCodeFormatValidation: true,
+        allowCommonChannelFallback: true
+      })
 
       await markXianyuOrderRedeemed(orderRecord.id, selectedCodeId, selectedCode, normalizedEmail)
 
@@ -2117,17 +2152,17 @@ router.get('/artisan-flow/today', apiKeyAuth, async (req, res) => {
 
     const codes = result.length > 0
       ? result[0].values.map(row => ({
-          id: row[0],
-          code: row[1],
-          isRedeemed: row[2] === 1,
-          redeemedAt: row[3],
-          redeemedBy: row[4],
-          accountEmail: row[5],
-          channel: row[6],
-          channelName: row[7],
-          createdAt: row[8],
-          updatedAt: row[9]
-        }))
+        id: row[0],
+        code: row[1],
+        isRedeemed: row[2] === 1,
+        redeemedAt: row[3],
+        redeemedBy: row[4],
+        accountEmail: row[5],
+        channel: row[6],
+        channelName: row[7],
+        createdAt: row[8],
+        updatedAt: row[9]
+      }))
       : []
 
     // 获取当前本地日期
@@ -2143,6 +2178,193 @@ router.get('/artisan-flow/today', apiKeyAuth, async (req, res) => {
   } catch (error) {
     console.error('[ArtisanFlow API] 获取当天兑换码失败:', error)
     res.status(500).json({ error: '服务器错误，请稍后重试' })
+  }
+})
+
+// ============================================================
+// 新增功能：自定义兑换码生成、导出、批量删除（参考 team-manage 项目）
+// ============================================================
+
+// 单个生成兑换码（支持自定义码 + 有效期）
+router.post('/generate-single', authenticateToken, requireMenu('redemption_codes'), async (req, res) => {
+  try {
+    const { accountEmail, channel, customCode, expiresDays } = req.body
+
+    if (!accountEmail) {
+      return res.status(400).json({ error: '必须指定所属账号邮箱' })
+    }
+
+    const db = await getDatabase()
+
+    // 检查账号是否存在
+    const accountResult = db.exec(`
+      SELECT id, email, user_count FROM gpt_accounts WHERE email = ?
+    `, [accountEmail])
+
+    if (accountResult.length === 0 || accountResult[0].values.length === 0) {
+      return res.status(404).json({ error: '指定的账号不存在' })
+    }
+
+    // 确定兑换码
+    let code
+    if (customCode && String(customCode).trim()) {
+      code = String(customCode).trim().toUpperCase()
+      // 检查自定义兑换码是否已存在
+      const existResult = db.exec(`SELECT id FROM redemption_codes WHERE code = ?`, [code])
+      if (existResult.length > 0 && existResult[0].values.length > 0) {
+        return res.status(400).json({ error: `兑换码 ${code} 已存在，请换一个` })
+      }
+    } else {
+      code = generateRedemptionCode()
+    }
+
+    const normalizedChannel = normalizeChannel(channel)
+    const resolvedChannelName = getChannelName(normalizedChannel)
+
+    // 计算过期时间
+    let expiresAt = null
+    if (expiresDays != null) {
+      const days = toInt(expiresDays, 0)
+      if (days > 0) {
+        const expiresDate = new Date()
+        expiresDate.setDate(expiresDate.getDate() + days)
+        const pad = (v) => String(v).padStart(2, '0')
+        expiresAt = `${expiresDate.getFullYear()}-${pad(expiresDate.getMonth() + 1)}-${pad(expiresDate.getDate())} ${pad(expiresDate.getHours())}:${pad(expiresDate.getMinutes())}:${pad(expiresDate.getSeconds())}`
+      }
+    }
+
+    try {
+      db.run(
+        `INSERT INTO redemption_codes (code, account_email, channel, channel_name, expires_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, DATETIME('now', 'localtime'), DATETIME('now', 'localtime'))`,
+        [code, accountEmail, normalizedChannel, resolvedChannelName, expiresAt]
+      )
+    } catch (err) {
+      if (err.message && err.message.includes('UNIQUE')) {
+        return res.status(400).json({ error: '兑换码已存在（重复），请换一个' })
+      }
+      throw err
+    }
+
+    saveDatabase()
+
+    res.status(201).json({
+      message: `兑换码 ${code} 已创建`,
+      code,
+      accountEmail,
+      channel: normalizedChannel,
+      channelName: resolvedChannelName,
+      expiresAt
+    })
+  } catch (error) {
+    console.error('单个生成兑换码错误:', error)
+    res.status(500).json({ error: '内部服务器错误' })
+  }
+})
+
+// 导出未使用的兑换码（返回纯文本）
+router.get('/export-unused', authenticateToken, requireMenu('redemption_codes'), async (req, res) => {
+  try {
+    const db = await getDatabase()
+
+    const result = db.exec(`
+      SELECT code, account_email, channel_name, expires_at, created_at
+      FROM redemption_codes
+      WHERE is_redeemed = 0
+        AND (expires_at IS NULL OR expires_at > DATETIME('now', 'localtime'))
+      ORDER BY created_at DESC
+    `)
+
+    if (result.length === 0 || result[0].values.length === 0) {
+      return res.json({ total: 0, text: '', codes: [] })
+    }
+
+    const codes = result[0].values.map(row => ({
+      code: row[0],
+      accountEmail: row[1],
+      channelName: row[2],
+      expiresAt: row[3],
+      createdAt: row[4]
+    }))
+
+    // 生成纯文本（一行一个码）
+    const textLines = codes.map(c => {
+      let line = c.code
+      if (c.accountEmail) line += `  [${c.accountEmail}]`
+      if (c.expiresAt) line += `  expires: ${c.expiresAt}`
+      return line
+    })
+
+    res.json({
+      total: codes.length,
+      text: textLines.join('\n'),
+      codes
+    })
+  } catch (error) {
+    console.error('导出未使用兑换码错误:', error)
+    res.status(500).json({ error: '内部服务器错误' })
+  }
+})
+
+// 批量删除未使用的兑换码
+router.delete('/batch-delete-unused', authenticateToken, requireMenu('redemption_codes'), async (req, res) => {
+  try {
+    const db = await getDatabase()
+
+    // 只删除 is_redeemed = 0 的兑换码
+    const countResult = db.exec(`
+      SELECT COUNT(*) FROM redemption_codes WHERE is_redeemed = 0
+    `)
+    const count = Number(countResult[0]?.values?.[0]?.[0] || 0)
+
+    if (count === 0) {
+      return res.json({ message: '没有未使用的兑换码可以删除', deleted: 0 })
+    }
+
+    db.run(`DELETE FROM redemption_codes WHERE is_redeemed = 0`)
+    saveDatabase()
+
+    res.json({
+      message: `已删除 ${count} 个未使用的兑换码`,
+      deleted: count
+    })
+  } catch (error) {
+    console.error('批量删除未使用兑换码错误:', error)
+    res.status(500).json({ error: '内部服务器错误' })
+  }
+})
+
+// 批量删除已过期的兑换码
+router.delete('/batch-delete-expired', authenticateToken, requireMenu('redemption_codes'), async (req, res) => {
+  try {
+    const db = await getDatabase()
+
+    const countResult = db.exec(`
+      SELECT COUNT(*) FROM redemption_codes
+      WHERE is_redeemed = 0
+        AND expires_at IS NOT NULL
+        AND expires_at <= DATETIME('now', 'localtime')
+    `)
+    const count = Number(countResult[0]?.values?.[0]?.[0] || 0)
+
+    if (count === 0) {
+      return res.json({ message: '没有已过期的兑换码可以删除', deleted: 0 })
+    }
+
+    db.run(`
+      DELETE FROM redemption_codes
+      WHERE is_redeemed = 0
+        AND expires_at IS NOT NULL
+        AND expires_at <= DATETIME('now', 'localtime')
+    `)
+    saveDatabase()
+
+    res.json({
+      message: `已删除 ${count} 个过期的兑换码`,
+      deleted: count
+    })
+  } catch (error) {
+    console.error('批量删除已过期兑换码错误:', error)
+    res.status(500).json({ error: '内部服务器错误' })
   }
 })
 

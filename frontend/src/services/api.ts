@@ -382,6 +382,7 @@ export interface RedemptionCode {
   channel: RedemptionChannel
   channelName?: string
   orderType?: PurchaseOrderType | null
+  expiresAt?: string | null
   createdAt: string
   updatedAt: string
   reservedForUid?: string | null
@@ -1547,15 +1548,15 @@ export const openAccountsService = {
   ): Promise<
     | { message: string; currentOpenAccountId: number; account?: { id: number; userCount?: number; inviteCount?: number } }
     | {
-        requiresCredit: true
-        message: string
-        creditOrder: {
-          orderNo: string
-          amount: string
-          payUrl?: string | null
-          payRequest?: { method?: 'POST' | 'GET'; url: string; fields?: Record<string, string> }
-        }
+      requiresCredit: true
+      message: string
+      creditOrder: {
+        orderNo: string
+        amount: string
+        payUrl?: string | null
+        payRequest?: { method?: 'POST' | 'GET'; url: string; fields?: Record<string, string> }
       }
+    }
   > {
     const response = await api.post(
       `/open-accounts/${accountId}/board`,
@@ -1693,7 +1694,7 @@ export const redemptionCodeService = {
     page?: number
     pageSize?: number
     search?: string
-    status?: 'all' | 'redeemed' | 'unused'
+    status?: 'all' | 'redeemed' | 'unused' | 'expired'
   }): Promise<{
     codes: RedemptionCode[]
     pagination: { page: number; pageSize: number; total: number }
@@ -1707,8 +1708,8 @@ export const redemptionCodeService = {
     return response.data
   },
 
-  async batchCreate(count: number, accountEmail: string, channel?: RedemptionChannel): Promise<BatchCreateResponse> {
-    const response = await api.post('/redemption-codes/batch', { count, accountEmail, ...(channel ? { channel } : {}) })
+  async batchCreate(count: number, accountEmail: string, channel?: RedemptionChannel, expiresDays?: number): Promise<BatchCreateResponse> {
+    const response = await api.post('/redemption-codes/batch', { count, accountEmail, ...(channel ? { channel } : {}), ...(expiresDays ? { expiresDays } : {}) })
     return response.data
   },
 
@@ -1813,6 +1814,31 @@ export const redemptionCodeService = {
 
   async updateChannel(id: number, channel: RedemptionChannel): Promise<{ message: string; code: RedemptionCode }> {
     const response = await api.patch(`/redemption-codes/${id}/channel`, { channel })
+    return response.data
+  },
+
+  async generateSingle(data: {
+    accountEmail: string
+    channel?: RedemptionChannel
+    customCode?: string
+    expiresDays?: number
+  }): Promise<{ message: string; code: string; expiresAt?: string | null }> {
+    const response = await api.post('/redemption-codes/generate-single', data)
+    return response.data
+  },
+
+  async exportUnused(): Promise<{ total: number; text: string; codes: { code: string; accountEmail: string; channelName: string; expiresAt?: string | null; createdAt: string }[] }> {
+    const response = await api.get('/redemption-codes/export-unused')
+    return response.data
+  },
+
+  async batchDeleteUnused(): Promise<{ message: string; deleted: number }> {
+    const response = await api.delete('/redemption-codes/batch-delete-unused')
+    return response.data
+  },
+
+  async batchDeleteExpired(): Promise<{ message: string; deleted: number }> {
+    const response = await api.delete('/redemption-codes/batch-delete-expired')
     return response.data
   }
 }
