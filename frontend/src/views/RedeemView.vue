@@ -147,7 +147,7 @@
               </li>
               <li class="flex items-start gap-3">
                 <span class="h-1.5 w-1.5 rounded-full bg-[#007AFF] mt-2 flex-shrink-0"></span>
-                <span>未收到邮件请检查垃圾箱/联系管理员。</span>
+                <span>未收到邮件请检查垃圾箱/联系我。</span>
               </li>
             </ul>
           </div>
