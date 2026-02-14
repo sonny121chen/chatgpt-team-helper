@@ -624,9 +624,9 @@ router.get('/', async (req, res) => {
     const countResult = db.exec(`SELECT COUNT(*) FROM gpt_accounts ${whereClause}`, params)
     const total = countResult[0]?.values?.[0]?.[0] || 0
 
-	    // 查询分页数据
-	    const offset = (page - 1) * pageSize
-	    const dataResult = db.exec(`
+    // 查询分页数据
+    const offset = (page - 1) * pageSize
+    const dataResult = db.exec(`
 	      SELECT id, email, token, refresh_token, user_count, invite_count, chatgpt_account_id, oai_device_id, expire_at, is_open,
 	             COALESCE(is_banned, 0) AS is_banned,
 	             created_at, updated_at
@@ -636,22 +636,22 @@ router.get('/', async (req, res) => {
 	      LIMIT ? OFFSET ?
 	    `, [...params, pageSize, offset])
 
-	    const accounts = (dataResult[0]?.values || []).map(row => ({
-	      id: row[0],
-	      email: row[1],
-	      token: row[2],
-	      refreshToken: row[3],
-	      userCount: row[4],
-	      inviteCount: row[5],
-	      chatgptAccountId: row[6],
-	      oaiDeviceId: row[7],
-	      expireAt: row[8] || null,
-	      isOpen: Boolean(row[9]),
-	      isDemoted: false,
-	      isBanned: Boolean(row[10]),
-	      createdAt: row[11],
-	      updatedAt: row[12]
-	    }))
+    const accounts = (dataResult[0]?.values || []).map(row => ({
+      id: row[0],
+      email: row[1],
+      token: row[2],
+      refreshToken: row[3],
+      userCount: row[4],
+      inviteCount: row[5],
+      chatgptAccountId: row[6],
+      oaiDeviceId: row[7],
+      expireAt: row[8] || null,
+      isOpen: Boolean(row[9]),
+      isDemoted: false,
+      isBanned: Boolean(row[10]),
+      createdAt: row[11],
+      updatedAt: row[12]
+    }))
 
     res.json({
       accounts,
@@ -666,8 +666,8 @@ router.get('/', async (req, res) => {
 // Get a single GPT account
 router.get('/:id', async (req, res) => {
   try {
-	    const db = await getDatabase()
-	    const result = db.exec(`
+    const db = await getDatabase()
+    const result = db.exec(`
 	      SELECT id, email, token, refresh_token, user_count, invite_count, chatgpt_account_id, oai_device_id, expire_at, is_open,
 	             COALESCE(is_banned, 0) AS is_banned,
 	             created_at, updated_at
@@ -680,22 +680,22 @@ router.get('/:id', async (req, res) => {
     }
 
     const row = result[0].values[0]
-	    const account = {
-	      id: row[0],
-	      email: row[1],
-	      token: row[2],
-	      refreshToken: row[3],
-	      userCount: row[4],
-		      inviteCount: row[5],
-		      chatgptAccountId: row[6],
-		      oaiDeviceId: row[7],
-		      expireAt: row[8] || null,
-		      isOpen: Boolean(row[9]),
-		      isDemoted: false,
-		      isBanned: Boolean(row[10]),
-		      createdAt: row[11],
-		      updatedAt: row[12]
-		    }
+    const account = {
+      id: row[0],
+      email: row[1],
+      token: row[2],
+      refreshToken: row[3],
+      userCount: row[4],
+      inviteCount: row[5],
+      chatgptAccountId: row[6],
+      oaiDeviceId: row[7],
+      expireAt: row[8] || null,
+      isOpen: Boolean(row[9]),
+      isDemoted: false,
+      isBanned: Boolean(row[10]),
+      createdAt: row[11],
+      updatedAt: row[12]
+    }
 
     res.json(account)
   } catch (error) {
@@ -743,12 +743,12 @@ router.post('/', async (req, res) => {
     const finalUserCount = userCount !== undefined ? userCount : 1
 
     db.run(
-      `INSERT INTO gpt_accounts (email, token, refresh_token, user_count, chatgpt_account_id, oai_device_id, expire_at, is_banned, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, DATETIME('now', 'localtime'), DATETIME('now', 'localtime'))`,
+      `INSERT INTO gpt_accounts (email, token, refresh_token, user_count, chatgpt_account_id, oai_device_id, expire_at, is_banned, is_open, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, DATETIME('now', 'localtime'), DATETIME('now', 'localtime'))`,
       [normalizedEmail, token, refreshToken || null, finalUserCount, normalizedChatgptAccountId, normalizedOaiDeviceId || null, normalizedExpireAt, isBannedValue]
     )
 
-		    // 获取新创建账号的ID
-		    const accountResult = db.exec(`
+    // 获取新创建账号的ID
+    const accountResult = db.exec(`
 		      SELECT id, email, token, refresh_token, user_count, invite_count, chatgpt_account_id, oai_device_id, expire_at, is_open,
 		             COALESCE(is_banned, 0) AS is_banned,
 		             created_at, updated_at
@@ -756,22 +756,22 @@ router.post('/', async (req, res) => {
 		      WHERE id = last_insert_rowid()
 		    `)
     const row = accountResult[0].values[0]
-	    const account = {
-	      id: row[0],
-	      email: row[1],
-	      token: row[2],
-	      refreshToken: row[3],
-	      userCount: row[4],
-		      inviteCount: row[5],
-		      chatgptAccountId: row[6],
-		      oaiDeviceId: row[7],
-		      expireAt: row[8] || null,
-		      isOpen: Boolean(row[9]),
-		      isDemoted: false,
-		      isBanned: Boolean(row[10]),
-		      createdAt: row[11],
-		      updatedAt: row[12]
-		    }
+    const account = {
+      id: row[0],
+      email: row[1],
+      token: row[2],
+      refreshToken: row[3],
+      userCount: row[4],
+      inviteCount: row[5],
+      chatgptAccountId: row[6],
+      oaiDeviceId: row[7],
+      expireAt: row[8] || null,
+      isOpen: Boolean(row[9]),
+      isDemoted: false,
+      isBanned: Boolean(row[10]),
+      createdAt: row[11],
+      updatedAt: row[12]
+    }
 
     // 生成随机兑换码的辅助函数
     function generateRedemptionCode(length = 12) {
@@ -925,8 +925,8 @@ router.put('/:id', async (req, res) => {
     }
     saveDatabase()
 
-		    // Get the updated account
-		    const result = db.exec(`
+    // Get the updated account
+    const result = db.exec(`
 		      SELECT id, email, token, refresh_token, user_count, invite_count, chatgpt_account_id, oai_device_id, expire_at, is_open,
 		             COALESCE(is_banned, 0) AS is_banned,
 		             created_at, updated_at
@@ -934,22 +934,22 @@ router.put('/:id', async (req, res) => {
 		      WHERE id = ?
 		    `, [req.params.id])
     const row = result[0].values[0]
-	    const account = {
-	      id: row[0],
-	      email: row[1],
-	      token: row[2],
-	      refreshToken: row[3],
-	      userCount: row[4],
-		      inviteCount: row[5],
-		      chatgptAccountId: row[6],
-		      oaiDeviceId: row[7],
-		      expireAt: row[8] || null,
-		      isOpen: Boolean(row[9]),
-		      isDemoted: false,
-		      isBanned: Boolean(row[10]),
-		      createdAt: row[11],
-		      updatedAt: row[12]
-		    }
+    const account = {
+      id: row[0],
+      email: row[1],
+      token: row[2],
+      refreshToken: row[3],
+      userCount: row[4],
+      inviteCount: row[5],
+      chatgptAccountId: row[6],
+      oaiDeviceId: row[7],
+      expireAt: row[8] || null,
+      isOpen: Boolean(row[9]),
+      isDemoted: false,
+      isBanned: Boolean(row[10]),
+      createdAt: row[11],
+      updatedAt: row[12]
+    }
 
     res.json(account)
   } catch (error) {
@@ -966,51 +966,51 @@ router.patch('/:id/open', async (req, res) => {
       return res.status(400).json({ error: 'isOpen must be a boolean' })
     }
 
-	    const db = await getDatabase()
+    const db = await getDatabase()
 
-	    const checkResult = db.exec('SELECT id, COALESCE(is_banned, 0) AS is_banned FROM gpt_accounts WHERE id = ?', [req.params.id])
-	    if (checkResult.length === 0 || checkResult[0].values.length === 0) {
-	      return res.status(404).json({ error: 'Account not found' })
-	    }
+    const checkResult = db.exec('SELECT id, COALESCE(is_banned, 0) AS is_banned FROM gpt_accounts WHERE id = ?', [req.params.id])
+    if (checkResult.length === 0 || checkResult[0].values.length === 0) {
+      return res.status(404).json({ error: 'Account not found' })
+    }
 
-	    const isBanned = Boolean(checkResult[0].values[0][1])
-	    if (isOpen && isBanned) {
-	      return res.status(400).json({ error: '账号已封号，不能设置为开放账号' })
-	    }
+    const isBanned = Boolean(checkResult[0].values[0][1])
+    if (isOpen && isBanned) {
+      return res.status(400).json({ error: '账号已封号，不能设置为开放账号' })
+    }
 
-	    db.run(
-	      `UPDATE gpt_accounts SET is_open = ?, updated_at = DATETIME('now', 'localtime') WHERE id = ?`,
-	      [isOpen ? 1 : 0, req.params.id]
-	    )
-	    saveDatabase()
+    db.run(
+      `UPDATE gpt_accounts SET is_open = ?, updated_at = DATETIME('now', 'localtime') WHERE id = ?`,
+      [isOpen ? 1 : 0, req.params.id]
+    )
+    saveDatabase()
 
-		    const result = db.exec(
-		      `
+    const result = db.exec(
+      `
 		        SELECT id, email, token, refresh_token, user_count, invite_count, chatgpt_account_id, oai_device_id, expire_at, is_open,
 		               COALESCE(is_banned, 0) AS is_banned,
 		               created_at, updated_at
 		        FROM gpt_accounts
 		        WHERE id = ?
 		      `,
-		      [req.params.id]
-		    )
-	    const row = result[0].values[0]
-	    const account = {
-	      id: row[0],
-	      email: row[1],
-	      token: row[2],
-	      refreshToken: row[3],
-	      userCount: row[4],
-		      inviteCount: row[5],
-		      chatgptAccountId: row[6],
-		      oaiDeviceId: row[7],
-		      expireAt: row[8] || null,
-		      isOpen: Boolean(row[9]),
-		      isDemoted: false,
-		      isBanned: Boolean(row[10]),
-		      createdAt: row[11],
-		      updatedAt: row[12]
-		    }
+      [req.params.id]
+    )
+    const row = result[0].values[0]
+    const account = {
+      id: row[0],
+      email: row[1],
+      token: row[2],
+      refreshToken: row[3],
+      userCount: row[4],
+      inviteCount: row[5],
+      chatgptAccountId: row[6],
+      oaiDeviceId: row[7],
+      expireAt: row[8] || null,
+      isOpen: Boolean(row[9]),
+      isDemoted: false,
+      isBanned: Boolean(row[10]),
+      createdAt: row[11],
+      updatedAt: row[12]
+    }
 
     res.json(account)
   } catch (error) {
@@ -1225,10 +1225,10 @@ router.post('/:id/refresh-token', async (req, res) => {
   try {
     const db = await getDatabase()
 
-	    const result = db.exec(
-	      'SELECT id, email, token, refresh_token, user_count, invite_count, chatgpt_account_id, oai_device_id, expire_at, is_open, COALESCE(is_banned, 0) AS is_banned, created_at, updated_at FROM gpt_accounts WHERE id = ?',
-	      [req.params.id]
-	    )
+    const result = db.exec(
+      'SELECT id, email, token, refresh_token, user_count, invite_count, chatgpt_account_id, oai_device_id, expire_at, is_open, COALESCE(is_banned, 0) AS is_banned, created_at, updated_at FROM gpt_accounts WHERE id = ?',
+      [req.params.id]
+    )
 
     if (result.length === 0 || result[0].values.length === 0) {
       return res.status(404).json({ error: '账号不存在' })
@@ -1273,27 +1273,27 @@ router.post('/:id/refresh-token', async (req, res) => {
     )
     saveDatabase()
 
-	    const updatedResult = db.exec(
-	      'SELECT id, email, token, refresh_token, user_count, invite_count, chatgpt_account_id, oai_device_id, expire_at, is_open, COALESCE(is_banned, 0) AS is_banned, created_at, updated_at FROM gpt_accounts WHERE id = ?',
-	      [req.params.id]
-	    )
+    const updatedResult = db.exec(
+      'SELECT id, email, token, refresh_token, user_count, invite_count, chatgpt_account_id, oai_device_id, expire_at, is_open, COALESCE(is_banned, 0) AS is_banned, created_at, updated_at FROM gpt_accounts WHERE id = ?',
+      [req.params.id]
+    )
     const updatedRow = updatedResult[0].values[0]
-	    const account = {
-	      id: updatedRow[0],
-	      email: updatedRow[1],
-	      token: updatedRow[2],
-	      refreshToken: updatedRow[3],
-	      userCount: updatedRow[4],
-	      inviteCount: updatedRow[5],
-	      chatgptAccountId: updatedRow[6],
-	      oaiDeviceId: updatedRow[7],
-	      expireAt: updatedRow[8] || null,
-	      isOpen: Boolean(updatedRow[9]),
-	      isDemoted: false,
-	      isBanned: Boolean(updatedRow[10]),
-	      createdAt: updatedRow[11],
-	      updatedAt: updatedRow[12]
-	    }
+    const account = {
+      id: updatedRow[0],
+      email: updatedRow[1],
+      token: updatedRow[2],
+      refreshToken: updatedRow[3],
+      userCount: updatedRow[4],
+      inviteCount: updatedRow[5],
+      chatgptAccountId: updatedRow[6],
+      oaiDeviceId: updatedRow[7],
+      expireAt: updatedRow[8] || null,
+      isOpen: Boolean(updatedRow[9]),
+      isDemoted: false,
+      isBanned: Boolean(updatedRow[10]),
+      createdAt: updatedRow[11],
+      updatedAt: updatedRow[12]
+    }
 
     res.json({
       message: 'Token 刷新成功',

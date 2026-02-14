@@ -1,0 +1,42 @@
+timestamp,message
+2026-02-13 12:56:45,"[Zeabur] Pod/service-6986f00133fc492d73d096af-74b6756b55-pj9tv - Pulling: Pulling image ""registry-oci.zeabur.cloud/e-6986eaf386311f632dc2ced7/s-6986f00133fc492d73d096af:d-698f1e9cc1cc55cd793c922b"""
+2026-02-13 13:13:45,"[Zeabur] Pod/service-6986f00133fc492d73d096af-74b6756b55-pj9tv - Pulled: Successfully pulled image ""registry-oci.zeabur.cloud/e-6986eaf386311f632dc2ced7/s-6986f00133fc492d73d096af:d-698f1e9cc1cc55cd793c922b"" in 17m2.509s (17m2.509s including waiting). Image size: 96285824 bytes."
+2026-02-13 13:13:45,[Zeabur] Pod/service-6986f00133fc492d73d096af-74b6756b55-pj9tv - Created: Created container chatgpt-team-helper
+2026-02-13 13:13:45,[Zeabur] Pod/service-6986f00133fc492d73d096af-74b6756b55-pj9tv - Started: Started container chatgpt-team-helper
+2026-02-13 13:13:45,"2026-02-13 13:13:45,663 INFO Set uid to user 0 succeeded"
+2026-02-13 13:13:45,"2026-02-13 13:13:45,668 INFO supervisord started with pid 1"
+2026-02-13 13:13:46,"2026-02-13 13:13:46,670 INFO spawned: 'backend' with pid 8"
+2026-02-13 13:13:46,"2026-02-13 13:13:46,672 INFO spawned: 'nginx' with pid 9"
+2026-02-13 13:13:47,"2026-02-13 13:13:47,674 INFO success: backend entered RUNNING state, process has stayed up for > than 1 seconds (startsecs)"
+2026-02-13 13:13:47,"2026-02-13 13:13:47,674 INFO success: nginx entered RUNNING state, process has stayed up for > than 1 seconds (startsecs)"
+2026-02-13 13:13:48,数据库已存在且表结构完整，跳过初始化
+2026-02-13 13:13:48,Database initialized at: /app/backend/db/database.sqlite
+2026-02-13 13:13:48,"[WaitingRoomAutoBoarding] 定时任务已启动，将在以下整点执行：8, 9, 10, 11, 12, 13, 14"
+2026-02-13 13:13:48,[WaitingRoomAutoBoarding] 下次执行时间：2026/2/13 14:00:00（约 46.19 分钟后）
+2026-02-13 13:13:48,[OpenAccountsSweeper] next run scheduled at 2026-02-13T14:00:00.000Z (in 46 minutes)
+2026-02-13 13:13:48,[OpenAccountsSweeper] started {
+2026-02-13 13:13:48,"  intervalHours: 1,"
+2026-02-13 13:13:48,"  maxJoined: 6,"
+2026-02-13 13:13:48,"  concurrency: 3,"
+2026-02-13 13:13:48,"  runOnStartup: false,"
+2026-02-13 13:13:48,"  createdWithinDays: 15"
+2026-02-13 13:13:48,}
+2026-02-13 13:13:48,[OrderExpirationSweeper] started {
+2026-02-13 13:13:48,"  intervalSeconds: 60,"
+2026-02-13 13:13:48,"  initialDelayMs: 30000,"
+2026-02-13 13:13:48,"  purchaseExpireMinutes: 15,"
+2026-02-13 13:13:48,"  creditExpireMinutes: 15"
+2026-02-13 13:13:48,}
+2026-02-13 13:13:48,[CreditOrderActionSweeper] started {
+2026-02-13 13:13:48,"  intervalSeconds: 60,"
+2026-02-13 13:13:48,"  initialDelayMs: 30000,"
+2026-02-13 13:13:48,"  concurrency: 2,"
+2026-02-13 13:13:48,"  maxRetries: 8,"
+2026-02-13 13:13:48,"  retryBaseSeconds: 60,"
+2026-02-13 13:13:48,"  retryMaxSeconds: 3600"
+2026-02-13 13:13:48,}
+2026-02-13 13:13:48,[Telegram Bot] Bot Token 未配置，跳过启动
+2026-02-13 13:13:48,[XianyuLoginRefresh] 自动续期任务已启动，间隔 30 分钟
+2026-02-13 13:13:48,[XianyuWsDelivery] disabled (XIANYU_WS_DELIVERY_ENABLED=false)
+2026-02-13 13:13:48,[XhsAutoSync] started { checkIntervalSeconds: 60 }
+2026-02-13 13:13:48,Server is running on port 3000

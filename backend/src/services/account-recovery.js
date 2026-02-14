@@ -147,7 +147,7 @@ export function selectRecoveryCode(
         AND (rc.reserved_for_order_no IS NULL OR rc.reserved_for_order_no = '')
         AND (rc.reserved_for_uid IS NULL OR rc.reserved_for_uid = '')
         AND COALESCE(ga.user_count, 0) + COALESCE(ga.invite_count, 0) < ?
-        AND COALESCE(ga.is_open, 0) = 1
+        -- AND COALESCE(ga.is_open, 0) = 1 -- Temporarily disabled to allow default (0) accounts
         AND COALESCE(ga.is_banned, 0) = 0
         AND ga.token IS NOT NULL
         AND trim(ga.token) != ''
