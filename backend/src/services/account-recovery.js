@@ -177,7 +177,9 @@ export function selectRecoveryCode(
     if (!recoveryCodeId || !recoveryCode || !recoveryAccountEmail || !expireAtRaw) continue
 
     const expireAtMs = parseExpireAtToMs(expireAtRaw)
-    if (expireAtMs == null || expireAtMs < effectiveMinExpireMs) continue
+    // Relaxed check: ensure account is not expired (expireAtMs > nowMs)
+    // We ignore the original order deadline (effectiveMinExpireMs) to ensure we can at least find a usable account in emergency.
+    if (expireAtMs == null || expireAtMs < nowMs) continue
 
     candidates.push({
       recoveryCodeId,
