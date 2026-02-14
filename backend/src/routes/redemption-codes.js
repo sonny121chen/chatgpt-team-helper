@@ -462,7 +462,7 @@ export async function redeemCodeInternal({
     const chatgptAccountId = String(row[4] ?? '').trim()
     if (!token || !chatgptAccountId) return false
     const expireAtMs = parseExpireAtToMs(row[6])
-    return expireAtMs != null && expireAtMs >= nowMs
+    return expireAtMs == null || expireAtMs >= nowMs
   }
   const pickUsableAccount = (rows) => {
     if (!Array.isArray(rows) || rows.length === 0) return null
@@ -531,8 +531,6 @@ export async function redeemCodeInternal({
           AND TRIM(token) != ''
           AND chatgpt_account_id IS NOT NULL
           AND TRIM(chatgpt_account_id) != ''
-          AND expire_at IS NOT NULL
-          AND TRIM(expire_at) != ''
         ORDER BY COALESCE(user_count, 0) + COALESCE(invite_count, 0) ASC, RANDOM()
         LIMIT ?
       `,

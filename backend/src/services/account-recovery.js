@@ -153,8 +153,6 @@ export function selectRecoveryCode(
         AND trim(ga.token) != ''
         AND ga.chatgpt_account_id IS NOT NULL
         AND trim(ga.chatgpt_account_id) != ''
-        AND ga.expire_at IS NOT NULL
-        AND trim(ga.expire_at) != ''
       ORDER BY is_today ASC, ga.expire_at ASC, occupancy ASC, rc.id ASC
       LIMIT ?
     `,
@@ -174,12 +172,10 @@ export function selectRecoveryCode(
     const isToday = Number(row[4] || 0) === 1
     const occupancy = Number(row[5] || 0)
 
-    if (!recoveryCodeId || !recoveryCode || !recoveryAccountEmail || !expireAtRaw) continue
+    if (!recoveryCodeId || !recoveryCode || !recoveryAccountEmail) continue
 
     const expireAtMs = parseExpireAtToMs(expireAtRaw)
-    // Relaxed check: ensure account is not expired (expireAtMs > nowMs)
-    // We ignore the original order deadline (effectiveMinExpireMs) to ensure we can at least find a usable account in emergency.
-    if (expireAtMs == null || expireAtMs < nowMs) continue
+    if (expireAtMs != null && expireAtMs < nowMs) continue
 
     candidates.push({
       recoveryCodeId,
