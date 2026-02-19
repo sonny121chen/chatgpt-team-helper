@@ -140,16 +140,30 @@
 
           <div class="pt-6 border-t border-gray-200/60 dark:border-white/10">
             <h4 class="text-[13px] font-semibold text-[#86868b] uppercase tracking-wider mb-4">使用提示</h4>
-            <ul class="space-y-3 text-[14px] text-[#1d1d1f]/70 dark:text-white/70">
-              <li class="flex items-start gap-3">
-                <span class="h-1.5 w-1.5 rounded-full bg-[#007AFF] mt-2 flex-shrink-0"></span>
-                <span>每个兑换码只能使用一次。</span>
-              </li>
-              <li class="flex items-start gap-3">
-                <span class="h-1.5 w-1.5 rounded-full bg-[#007AFF] mt-2 flex-shrink-0"></span>
-                <span>未收到邮件请检查垃圾箱/联系我。</span>
-              </li>
-            </ul>
+            <div class="flex items-end justify-between gap-4">
+              <ul class="space-y-3 text-[14px] text-[#1d1d1f]/70 dark:text-white/70 flex-1">
+                <li class="flex items-start gap-3">
+                  <span class="h-1.5 w-1.5 rounded-full bg-[#007AFF] mt-2 flex-shrink-0"></span>
+                  <span>每个兑换码只能使用一次。</span>
+                </li>
+                <li class="flex items-start gap-3">
+                  <span class="h-1.5 w-1.5 rounded-full bg-[#007AFF] mt-2 flex-shrink-0"></span>
+                  <span>未收到邮件请检查垃圾箱/联系我。</span>
+                </li>
+                <li class="flex items-start gap-3">
+                  <span class="h-1.5 w-1.5 rounded-full bg-[#34C759] mt-2 flex-shrink-0"></span>
+                  <span>数据备份方案请联系微信：<strong class="text-[#1d1d1f] dark:text-white">HeMu1005XinMao</strong></span>
+                </li>
+              </ul>
+              <div class="flex-shrink-0 group relative">
+                <img
+                  src="/wechat-qr.png"
+                  alt="微信二维码"
+                  class="w-[72px] h-[72px] rounded-xl border border-gray-200/60 dark:border-white/10 shadow-sm transition-transform duration-300 group-hover:scale-110 cursor-pointer"
+                />
+                <span class="absolute -top-7 left-1/2 -translate-x-1/2 text-[11px] text-[#86868b] whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity duration-200">扫码添加微信</span>
+              </div>
+            </div>
           </div>
         </div>
       </AppleCard>
